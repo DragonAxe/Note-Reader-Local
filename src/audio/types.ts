@@ -165,6 +165,13 @@ export interface SpeechChunk {
 	sequence: number;
 	/** Block type from the source markdown. */
 	blockType: BlockType;
+	/**
+	 * Which block of the note (paragraph, heading, list item, quote paragraph)
+	 * this sentence came from; sentences of one block share it. Set by the
+	 * extractor. Absent on chunks built some other way, where callers fall back
+	 * to the gaps in the source.
+	 */
+	paragraph?: number;
 	/** Vault-relative path to the note this chunk came from. */
 	filePath: string;
 	/** Speakable text, already stripped of markdown. */

@@ -23,6 +23,7 @@ import {
 	shouldClearPinnedKokoro,
 	getTotalUsage,
 	downloadModel,
+	downloadVoice,
 	voiceForModelDownload,
 	describeModelDownload,
 	type ModelDirAdapter,
@@ -456,6 +457,53 @@ async function run(): Promise<void> {
 		);
 		const describedOk = describeModelDownload(allOk.result, null);
 		check("NEW plain success message", describedOk.message === "Kokoro model ready." && describedOk.modelInstalled, JSON.stringify(describedOk));
+	}
+
+	console.log("a download can be cancelled");
+	{
+		const noopApp = {
+			vault: {
+				adapter: {
+					async exists() {
+						return true;
+					},
+					async mkdir() {},
+					async writeBinary() {},
+				},
+			},
+		};
+		const realFetch = globalThis.fetch;
+		try {
+			// Already cancelled: nothing is requested.
+			let requested = 0;
+			globalThis.fetch = (async () => {
+				requested += 1;
+				return new Response(new Uint8Array(8), { status: 200 });
+			}) as typeof fetch;
+			const done = new AbortController();
+			done.abort();
+			const early = await downloadVoice(noopApp as never, "model", "af_heart.bin", () => undefined, done.signal);
+			check("a signal aborted before the start cancels at once", !early.ok && early.cancelled === true, JSON.stringify(early));
+			check("it makes no request", requested === 0, String(requested));
+
+			// Cancelled while a request is in flight.
+			globalThis.fetch = ((_url: string, init?: RequestInit) =>
+				new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+				})) as typeof fetch;
+			const midway = new AbortController();
+			const pending = downloadVoice(noopApp as never, "model", "af_heart.bin", () => undefined, midway.signal);
+			midway.abort();
+			const result = await pending;
+			check("an abort during the request is reported as cancelled", !result.ok && result.cancelled === true, JSON.stringify(result));
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+
+		const atModel = describeModelDownload({ ok: false, cancelled: true, stage: "model", error: "x" }, null);
+		check("cancelled while fetching the model: not installed", atModel.message === "Download cancelled." && !atModel.modelInstalled, JSON.stringify(atModel));
+		const atVoice = describeModelDownload({ ok: false, cancelled: true, stage: "voice", error: "x" }, null);
+		check("cancelled while fetching the voice: the model is installed", atVoice.modelInstalled, JSON.stringify(atVoice));
 	}
 
 	if (failures > 0) {

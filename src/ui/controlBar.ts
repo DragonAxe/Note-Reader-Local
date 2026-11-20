@@ -542,8 +542,11 @@ export class ControlBar {
 
 		// Preparing shows the pause icon: a click then holds the first sentence
 		// back, so the button is live from the moment reading starts.
-		setIcon(this.playPauseBtn, state === "playing" || state === "preparing" ? "pause" : "play");
-		this.apply(this.playPauseBtn, this.affordances.playPause);
+		const player = this.plugin.getPlayer();
+		const waitOnly = state === "preparing" && !player.canPauseWhilePreparing();
+		setIcon(this.playPauseBtn, waitOnly ? "loader-2" : state === "playing" || state === "preparing" ? "pause" : "play");
+		this.playPauseBtn.toggleClass("is-loading", waitOnly);
+		this.apply(this.playPauseBtn, this.affordances.playPause, waitOnly);
 		// A yellow dashed outline while audio is being made and none is sounding.
 		this.playWrap.toggleClass("is-generating", this.generating && (state === "preparing" || state === "playing"));
 

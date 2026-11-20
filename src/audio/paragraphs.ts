@@ -1,21 +1,23 @@
 import type { SpeechChunk } from "./types";
 
 /**
- * Where paragraphs begin, worked out from the chunks alone.
+ * Where paragraphs begin.
  *
- * Chunks are sentences, and none of them records which paragraph it came from,
- * so a paragraph is recognised by its edges: a chunk starts one when it is the
- * first, when the kind of block changes (a heading, then prose), or when more
- * than a single separator character lies between it and the previous chunk in
- * the note - a blank line, or a list or quote marker. Sentences inside a
- * paragraph are separated by a space or one line break.
+ * Chunks are sentences. The extractor numbers the block each came from, and a
+ * chunk starts a paragraph when its number differs from the previous chunk's.
+ * Chunks without a number (built some other way) fall back to their edges: a
+ * chunk starts one when the kind of block changes (a heading, then prose), or
+ * when more than a single separator character lies between it and the previous
+ * chunk in the note - a blank line, or a list or quote marker.
  */
 export function startsParagraph(chunks: readonly SpeechChunk[], index: number): boolean {
 	if (index <= 0) return true;
 	const chunk = chunks[index];
 	const before = chunks[index - 1];
 	if (!chunk || !before) return true;
-	return chunk.blockType !== before.blockType || chunk.sourceStart - before.sourceEnd >= 2;
+	if (chunk.paragraph !== undefined && before.paragraph !== undefined) return chunk.paragraph !== before.paragraph;
+	const gap = chunk.sourceStart - before.sourceEnd;
+	return chunk.blockType !== before.blockType || gap < 0 || gap >= 2;
 }
 
 /** The first paragraph start after `from`, or null when `from` is in the last paragraph. */

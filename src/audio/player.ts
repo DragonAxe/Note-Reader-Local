@@ -1,6 +1,7 @@
 import { Emitter } from "./emitter";
 import { WAV_MIME } from "./wav";
 import { wordAt } from "./words";
+import { startsParagraph } from "./paragraphs";
 import type { SpeechEngine, SpeechChunk, SynthResult, WordTiming } from "./types";
 
 /**
@@ -442,12 +443,9 @@ export class Player {
 			first.wordSpans === undefined;
 		if (joinable) {
 			for (;;) {
-				const prev = this.chunks[last]!;
 				const next = this.chunks[last + 1];
 				if (!next) break;
-				if (next.blockType !== first.blockType || next.wordSpans !== undefined) break;
-				const gap = next.sourceStart - prev.sourceEnd;
-				if (gap < 0 || gap > 1) break;
+				if (next.wordSpans !== undefined || startsParagraph(this.chunks, last + 1)) break;
 				if (length + 1 + next.text.length > Math.max(maxChars, first.text.length)) break;
 				length += 1 + next.text.length;
 				last += 1;
@@ -799,6 +797,15 @@ export class Player {
 		// tearDownCurrentChunk() pauses the element twice where the element route
 		// pauses it once.
 		return "restart";
+	}
+
+	/**
+	 * Whether pausing is possible before any audio is sounding. It is for engines
+	 * that hand back audio (the next utterance is held back); an engine that owns
+	 * playback has nothing to hold, so its pause starts only once it is speaking.
+	 */
+	canPauseWhilePreparing(): boolean {
+		return !(this.engine?.capabilities.ownsPlayback ?? false);
 	}
 
 	pause(): void {

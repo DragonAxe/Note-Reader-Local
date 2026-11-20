@@ -7052,9 +7052,14 @@ function extractChunksPass(source: string, opts: ExtractOptions, src: SegmenterS
 	let strictSpans = shared.strictSpans ?? hiddenSpans;
 	// Offsets of the footnote characters the `%%` block lines emit (NRL-212).
 	const keptFootnote = new Set<number>();
+	let blockCount = 0;
 	const speak = (text: string, index: number[], start: number, blockType: BlockType): SpeechChunk[] => {
 		const kept = hiddenSpans.length === 0 ? { text, index } : dropHiddenText(text, index, hiddenSpans, keptFootnote.size === 0 ? undefined : (o) => keptFootnote.has(o), strictSpans);
-		return splitSentences(kept.text, kept.index, start, segmentCtx, blockType);
+		const out = splitSentences(kept.text, kept.index, start, segmentCtx, blockType);
+		// Every call is one block of the note: its sentences are one paragraph.
+		const block = blockCount++;
+		for (const chunk of out) chunk.paragraph = block;
+		return out;
 	};
 	// Whether the renderer opens a `%%` block on each line, where that answer may
 	// overrule ours: our block opener on a line stands only where the renderer

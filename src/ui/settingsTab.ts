@@ -923,8 +923,13 @@ export class SettingsPanel {
 		});
 		// Read now and whenever a read starts or ends: the model is usually loaded
 		// by a read that began after this page was drawn.
+		let off: () => void = () => undefined;
 		const paint = (): void => {
-			if (!row.isConnected) return;
+			if (!row.isConnected) {
+				// The page was left: stop listening (this row's own listeners only).
+				off();
+				return;
+			}
 			const kokoro = this.plugin.getKokoro();
 			const runtime = kokoro?.runtimeInfo() ?? null;
 			const loaded = runtime !== null || (kokoro?.isPrepared() ?? false);
@@ -941,10 +946,11 @@ export class SettingsPanel {
 		this.offMemory?.();
 		const offState = this.plugin.getPlayer().on("state", paint);
 		const offInfo = this.plugin.onReadInfoChange(paint);
-		this.offMemory = () => {
+		off = () => {
 			offState();
 			offInfo();
 		};
+		this.offMemory = off;
 	}
 
 	/**

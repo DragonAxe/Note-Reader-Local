@@ -138,16 +138,34 @@ export default class LocalTtsReaderPlugin extends Plugin {
 		const pending = this.idleEdits;
 		this.idleEdits = null;
 		if (!pending) return;
+		// A read began after these edits were typed: it has its own tracking and
+		// has already written its own position, which these edits do not apply to.
+		const state = this.player.getState();
+		if (state === "preparing" || state === "playing" || state === "paused") return;
 		const position = this.pluginData.positions?.[pending.filePath];
 		if (position) {
 			// Bias to the left: typing at the very start of the start section
 			// stays inside it instead of skipping past what was just typed.
 			position.sourceOffset = pending.changes.mapPos(position.sourceOffset, -1);
 			position.updatedAt = Date.now();
-			void this.saveSettings();
+			this.scheduleIdleSave();
 		}
 		this.refreshSectionPreviews();
 	}
+
+	/**
+	 * Write the shifted position to disk, but not on every typing pause: the
+	 * file is synced with the vault, and the value is only needed next time a
+	 * read starts.
+	 */
+	private scheduleIdleSave(): void {
+		if (this.idleSaveTimer !== null) window.clearTimeout(this.idleSaveTimer);
+		this.idleSaveTimer = window.setTimeout(() => {
+			this.idleSaveTimer = null;
+			void this.saveSettings();
+		}, 10_000);
+	}
+	private idleSaveTimer: number | null = null;
 
 	/**
 	 * Throttled reading-position writes. Its own module because main.ts cannot be
@@ -394,7 +412,9 @@ export default class LocalTtsReaderPlugin extends Plugin {
 				if (!update.docChanged) return;
 				const state = this.player.getState();
 				if (state === "preparing" || state === "playing" || state === "paused") return;
-				const current = this.currentEditor();
+				// The editor and file only: this runs on every keystroke, and the
+				// note's text is not needed (the changes carry the positions).
+				const current = this.activeNote();
 				if (!current || current.editor !== update.view) return;
 				if (this.idleEdits && this.idleEdits.filePath !== current.filePath) this.flushIdleEdits();
 				this.idleEdits = {
@@ -407,6 +427,10 @@ export default class LocalTtsReaderPlugin extends Plugin {
 		);
 		this.register(() => {
 			if (this.idleEditTimer !== null) window.clearTimeout(this.idleEditTimer);
+			if (this.idleSaveTimer !== null) {
+				window.clearTimeout(this.idleSaveTimer);
+				void this.saveSettings();
+			}
 		});
 
 		// Ribbon: read the whole note, and play from the cursor or the selection
@@ -726,6 +750,20 @@ export default class LocalTtsReaderPlugin extends Plugin {
 	 * supported way to get at it. The `cm` property is the fallback for older
 	 * builds where the container lookup comes up empty.
 	 */
+	/** The note in front and its editor, without reading its text. */
+	private activeNote(): { editor: EditorView; filePath: string } | null {
+		const recent = this.app.workspace.getMostRecentLeaf()?.view;
+		const view =
+			this.app.workspace.getActiveViewOfType(MarkdownView) ??
+			(recent instanceof MarkdownView ? recent : null);
+		if (!view) return null;
+		const editor =
+			EditorView.findFromDOM(view.containerEl) ??
+			((view.editor as unknown as { cm?: EditorView }).cm ?? null);
+		if (!editor) return null;
+		return { editor, filePath: view.file?.path ?? "" };
+	}
+
 	private currentEditor(): { editor: EditorView; source: string; filePath: string } | null {
 		// The settings pane (or any other non-note view) can be the active leaf
 		// while a note is still the one in front; fall back to the most recent
@@ -928,6 +966,7 @@ export default class LocalTtsReaderPlugin extends Plugin {
 	 * section clears the record instead, which is what "never read" means.
 	 */
 	nudgeStart(delta: number): void {
+		this.flushIdleEdits();
 		const p = this.previewChunks();
 		if (!p) return;
 		this.moveStartTo(p, Math.min(Math.max(p.index + delta, 0), p.chunks.length - 1));
@@ -938,6 +977,7 @@ export default class LocalTtsReaderPlugin extends Plugin {
 
 	/** Move the start (idle) or the reading (playing) to the next or previous paragraph. */
 	jumpParagraph(direction: 1 | -1): void {
+		this.flushIdleEdits();
 		// A second "previous" within a few seconds means the paragraph before, not
 		// the start of the one the first press landed on (reading may already have
 		// moved a sentence into it).
@@ -977,6 +1017,7 @@ export default class LocalTtsReaderPlugin extends Plugin {
 	 * would otherwise do nothing visible.
 	 */
 	async restartFromBeginning(): Promise<void> {
+		this.flushIdleEdits();
 		const p = this.previewChunks();
 		if (!p) return;
 		const state = this.player.getState();
@@ -1000,6 +1041,7 @@ export default class LocalTtsReaderPlugin extends Plugin {
 	}
 
 	async readActiveNote(): Promise<void> {
+		this.flushIdleEdits();
 		const t = (step: string, detail?: unknown) =>
 			trace(this.app, this.manifest.dir!, step, detail);
 		t("readActiveNote: entered");
@@ -1331,6 +1373,7 @@ export default class LocalTtsReaderPlugin extends Plugin {
 	}
 
 	private async readFromCursor(position: number): Promise<void> {
+		this.flushIdleEdits();
 		const current = this.currentEditor();
 		if (!current) {
 			new Notice("Open a note first.");
