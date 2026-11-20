@@ -32,8 +32,7 @@ export class ControlBar {
 	private readonly playPauseBtn: HTMLButtonElement;
 	/** Holds the play button and the outline drawn around it while audio is being generated. */
 	private readonly playWrap: HTMLElement;
-	/** Both only mean something while a read is running. */
-	private readonly replayBtn: HTMLButtonElement;
+	/** Only means something while a read is running. */
 	private readonly stopBtn: HTMLButtonElement;
 	private groups: HTMLElement[] = [];
 	private resizeObserver: ResizeObserver | null = null;
@@ -105,16 +104,6 @@ export class ControlBar {
 			// Idle, the skip buttons move where the next read starts.
 			if (this.startIsAdjustable()) this.plugin.nudgeStart(-1);
 			else void this.plugin.getPlayer().previous();
-		});
-
-		const replayBtn = this.el.createEl("button", {
-			cls: "local-tts-cb-btn",
-			attr: { "aria-label": "Replay current sentence", type: "button" },
-		});
-		this.replayBtn = replayBtn;
-		setIcon(replayBtn, "rotate-ccw");
-		replayBtn.addEventListener("click", () => {
-			void this.plugin.getPlayer().replayCurrent();
 		});
 
 		// The outline lives beside the button, not in it: setIcon() empties the
@@ -217,7 +206,7 @@ export class ControlBar {
 		// kept whole, so when the width runs out a whole group wraps to the next
 		// row, at the separators.
 		const transport = this.el.createDiv({ cls: "local-tts-cb-group" });
-		transport.append(replayBtn, this.playWrap, cursorBtn, stopBtn);
+		transport.append(this.playWrap, cursorBtn, stopBtn);
 		const sections = this.el.createDiv({ cls: "local-tts-cb-group local-tts-cb-section-group" });
 		sections.append(beginningBtn, paraPrevBtn, previousBtn, this.progressEl, nextBtn, paraNextBtn);
 		speed.addClass("local-tts-cb-group");
@@ -550,12 +539,10 @@ export class ControlBar {
 		// A yellow dashed outline while audio is being made and none is sounding.
 		this.playWrap.toggleClass("is-generating", this.generating && (state === "preparing" || state === "playing"));
 
-		// Nothing to replay or stop unless a read is running (paused counts).
-		for (const button of [this.replayBtn, this.stopBtn]) {
-			button.disabled = !active;
-			if (active) button.removeAttribute("aria-disabled");
-			else button.setAttribute("aria-disabled", "true");
-		}
+		// Nothing to stop unless a read is running (paused counts).
+		this.stopBtn.disabled = !active;
+		if (active) this.stopBtn.removeAttribute("aria-disabled");
+		else this.stopBtn.setAttribute("aria-disabled", "true");
 
 		this.apply(this.slowerBtn, this.affordances.rate);
 		this.apply(this.fasterBtn, this.affordances.rate);
