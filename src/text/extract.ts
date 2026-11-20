@@ -20,7 +20,17 @@ import {
  */
 
 const MAX_CHUNK_CHARS = 220;
-const MIN_CHUNK_CHARS = 40;
+/**
+ * A piece shorter than this folds into the one after it.
+ *
+ * It exists to repair false splits such as "Dr." or "e.g." and to keep a bare
+ * "Yes." from being synthesised alone. It is deliberately small: every sentence
+ * above it is its own chunk, because a chunk is also what the reader sees as a
+ * "section" - counted, previewed, skipped to and highlighted one at a time.
+ * Folding sentences up to 40 characters together, as this once did, made four
+ * short sentences read as a single section.
+ */
+const MIN_CHUNK_CHARS = 8;
 
 // U+FE0F (variation selector 16) is a lone alternative rather than a class
 // member: inside a class lint reads it as a combining mark that could merge with
@@ -2879,7 +2889,7 @@ function mergeShort(pieces: Piece[], ctx: SegmentContext): SpeechChunk[] {
 	for (const piece of pieces) {
 		const chunk = piece.chunk;
 		const prev = out[out.length - 1];
-		if (prev && piece.legacyOpen && chunk.text.length < MIN_CHUNK_CHARS) {
+		if (prev && piece.legacyOpen && prev.text.length < MIN_CHUNK_CHARS) {
 			// The join inserts a space that exists in neither input, so the
 			// offset map needs an entry for it too. Without this every position
 			// after the join shifts by one and highlights land mid-word.
